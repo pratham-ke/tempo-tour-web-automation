@@ -35,13 +35,13 @@ export type RoutePath = (typeof routes)[RouteKey];
 
 /**
  * Build a tenant-app relative URL for Playwright page.goto / baseURL resolution.
+ * Route path keeps literal slashes (app links use route=common/calendar, not %2F).
  */
 export function buildRoute(
   route: RoutePath | string,
   params?: Record<string, string | number | boolean | undefined>,
 ): string {
   const search = new URLSearchParams();
-  search.set('route', route);
 
   if (params) {
     for (const [key, value] of Object.entries(params)) {
@@ -50,5 +50,8 @@ export function buildRoute(
     }
   }
 
-  return `index.php?${search.toString()}`;
+  const query = search.toString();
+  return query
+    ? `index.php?route=${route}&${query}`
+    : `index.php?route=${route}`;
 }

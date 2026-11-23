@@ -69,4 +69,23 @@ export class CalendarPage {
       timeout: 30_000,
     });
   }
+
+  /**
+   * Blocked dates swap Add (+) to blockdateoverridepopup(), so dateCell() cannot
+   * find them. Identify the in-month cell by the visible day number instead.
+   */
+  async expectBlockedEventMarkerOnDate(
+    isoDate: string,
+    marker: string,
+  ): Promise<void> {
+    const day = isoDate.split('-').pop() ?? '';
+    const cell = this.page.locator('td.date_box').filter({
+      has: this.page.locator('div.calendar_date').filter({
+        hasText: new RegExp(`^${day}$`),
+      }),
+    });
+    await expect(cell.locator('.calendar_day_holder')).toContainText(marker, {
+      timeout: 30_000,
+    });
+  }
 }

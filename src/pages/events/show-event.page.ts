@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page, type Response } from '@playwright/test';
 import { timeouts } from '../../../config/timeouts';
 
 export interface NewVenueInput {
@@ -102,17 +102,27 @@ export class ShowEventPage {
   async fillNewVenue(
     venue: NewVenueInput,
     venueCountryCode: string = 'US',
+    options?: { omitVenueType?: boolean },
   ): Promise<void> {
     await this.applyVenueCountry(venueCountryCode);
 
     await this.page.locator('#venue_form input[name="name"]').fill(venue.name);
     await this.page.locator('#venue_form input[name="city"]').fill(venue.city);
 
-    await this.selectVenueType();
+    if (!options?.omitVenueType) {
+      await this.selectVenueType();
+    }
 
     // State is chosen last: the country AJAX rebuilds the State dropdown and would
     // discard an earlier selection.
     await this.selectVenueState(venue);
+  }
+
+  /**
+   * Leave Type on --Please Select--. Used by the required-field validation test.
+   */
+  async expectVenueTypeEmpty(): Promise<void> {
+    await expect(this.page.locator('#venuetype')).toHaveValue('');
   }
 
   /** Venue Type is mandatory and comes from the application's own list. */
@@ -124,7 +134,10 @@ export class ShowEventPage {
   }
 
   /** Guard for the confirmed mandatory set before submitting. */
-  async expectMandatoryFieldsFilled(venue: NewVenueInput): Promise<void> {
+  async expectMandatoryFieldsFilled(
+    venue: NewVenueInput,
+    options?: { omitVenueType?: boolean },
+  ): Promise<void> {
     await expect(this.page.locator('#showDate')).not.toHaveValue('');
     await expect(this.page.locator('#country_tz')).not.toHaveValue('');
     await expect(this.page.locator('#timeZone')).not.toHaveValue('');
@@ -135,7 +148,12 @@ export class ShowEventPage {
     await expect(
       this.page.locator('#venue_form input[name="city"]'),
     ).toHaveValue(venue.city);
-    await expect(this.page.locator('#venuetype')).not.toHaveValue('');
+
+    if (options?.omitVenueType) {
+      await this.expectVenueTypeEmpty();
+    } else {
+      await expect(this.page.locator('#venuetype')).not.toHaveValue('');
+    }
 
     const stateSelect = this.page.locator('#state');
     if (await stateSelect.isVisible()) {
@@ -146,12 +164,10 @@ export class ShowEventPage {
   }
 
   /**
-   * SAVE is slow (the server does post-save work) and there is no success message,
-   * so we wait for the save request itself to be answered instead of a toast or a
-   * fixed delay. When the application rejects the data it re-renders this form with
-   * messages in .error_msg, which we surface as a readable failure.
+   * Clicks SAVE and waits for the insert POST. Shared by happy-path save and
+   * required-field validation (which re-renders this form instead of leaving it).
    */
-  async saveShow(): Promise<void> {
+  async clickSaveAndWaitForInsertResponse(): Promise<Response> {
     const savePost = this.page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' &&
@@ -165,7 +181,17 @@ export class ShowEventPage {
       .first()
       .click();
 
-    const response = await savePost;
+    return await savePost;
+  }
+
+  /**
+   * SAVE is slow (the server does post-save work) and there is no success message,
+   * so we wait for the save request itself to be answered instead of a toast or a
+   * fixed delay. When the application rejects the data it re-renders this form with
+   * messages in .error_msg, which we surface as a readable failure.
+   */
+  async saveShow(): Promise<void> {
+    const response = await this.clickSaveAndWaitForInsertResponse();
     expect(
       response.status(),
       'SAVE request should be accepted by the application',
@@ -191,6 +217,13 @@ export class ShowEventPage {
         `Show was not saved — application validation: "${validationMessage}"`,
       );
     }
+  }
+
+  /** Server validation messages are rendered in `.error_msg` after a failed insert POST. */
+  async expectValidationError(message: string): Promise<void> {
+    await expect(this.page.locator('#show_frm .error_msg').first()).toContainText(
+      message,
+    );
   }
 
   /**

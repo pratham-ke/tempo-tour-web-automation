@@ -70,6 +70,15 @@ export class CalendarPage {
     });
   }
 
+  /** Used after a failed SAVE — this unique marker must not have been written to Calendar. */
+  async expectEventMarkerAbsentOnDate(
+    isoDate: string,
+    marker: string,
+  ): Promise<void> {
+    const cell = this.dateCell(isoDate);
+    await expect(cell.locator('.calendar_day_holder')).not.toContainText(marker);
+  }
+
   /**
    * Blocked dates swap Add (+) to blockdateoverridepopup(), so dateCell() cannot
    * find them. Identify the in-month cell by the visible day number instead.

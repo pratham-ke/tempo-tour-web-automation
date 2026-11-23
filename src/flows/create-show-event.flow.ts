@@ -31,6 +31,56 @@ export class CreateShowEventFlow {
    * isoDate is unpadded (`2027-12-15`) to match Calendar’s addeventpopup() argument.
    */
   async createMinimalShowFromCalendar(): Promise<CreateShowEventResult> {
+    const prepared = await this.openShowCreateForm();
+    const { calendar, showForm, venue, cityMarker, venueName, isoDate, month, year, day } =
+      prepared;
+
+    await showForm.fillNewVenue(venue, 'US');
+    await showForm.expectMandatoryFieldsFilled(venue);
+    await showForm.saveShow();
+
+    // Local saves may not redirect to Calendar. Open the event month explicitly
+    // so verification does not depend on redirect behaviour.
+    await calendar.goto(month, year);
+    await calendar.expectEventMarkerOnDate(isoDate, cityMarker);
+
+    return { isoDate, month, year, day, venueName, cityMarker };
+  }
+
+  /**
+   * Same Calendar → Show path as create, but Venue Type stays --Please Select--.
+   * Expects server validation and no Calendar event for this unique city.
+   */
+  async submitShowWithEmptyVenueType(): Promise<CreateShowEventResult> {
+    const prepared = await this.openShowCreateForm();
+    const { calendar, showForm, venue, cityMarker, venueName, isoDate, month, year, day } =
+      prepared;
+
+    await showForm.fillNewVenue(venue, 'US', { omitVenueType: true });
+    await showForm.expectMandatoryFieldsFilled(venue, { omitVenueType: true });
+
+    await showForm.clickSaveAndWaitForInsertResponse();
+    await showForm.expectValidationError('Please enter venue type');
+    await showForm.expectCreateFormLoaded();
+
+    await calendar.goto(month, year);
+    await calendar.expectEventMarkerAbsentOnDate(isoDate, cityMarker);
+
+    return { isoDate, month, year, day, venueName, cityMarker };
+  }
+
+  /** Calendar → Add Event popup → Show form, ready to fill. */
+  private async openShowCreateForm(): Promise<{
+    calendar: CalendarPage;
+    showForm: ShowEventPage;
+    venue: { name: string; city: string; stateLabel: string };
+    cityMarker: string;
+    venueName: string;
+    isoDate: string;
+    month: number;
+    year: number;
+    day: number;
+  }> {
     const year = new Date().getFullYear() + 1;
     const month = 12;
     const day = 15;
@@ -70,23 +120,16 @@ export class CreateShowEventFlow {
     await showForm.ensureHotelUnchecked();
     await showForm.ensureFlightUnchecked();
 
-    await showForm.fillNewVenue(venue, 'US');
-
-    await showForm.expectMandatoryFieldsFilled(venue);
-    await showForm.saveShow();
-
-    // Local saves may not redirect to Calendar. Open the event month explicitly
-    // so verification does not depend on redirect behaviour.
-    await calendar.goto(month, year);
-    await calendar.expectEventMarkerOnDate(isoDate, cityMarker);
-
     return {
+      calendar,
+      showForm,
+      venue,
+      cityMarker,
+      venueName,
       isoDate,
       month,
       year,
       day,
-      venueName,
-      cityMarker,
     };
   }
 }
